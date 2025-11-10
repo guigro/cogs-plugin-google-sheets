@@ -23,6 +23,7 @@ export default function App() {
     };
     inputEvents: {
       "Append Row": string;
+      "Add to existing Row": string;
     };
   }>();
   const isConnected = useIsConnected(connection);
@@ -79,7 +80,78 @@ export default function App() {
     [spreadsheetId, tabName, googleApi]
   );
 
+  const appendToRow = useCallback(
+    async (rowString: string) => {
+      const row = parseRow(rowString);
+
+      if (row.length === 0) {
+        console.warn("Empty row provided");
+        return;
+      }
+
+      const key = row[0];
+      const valuesToAppend = row.slice(1); // Remove the key, keep only values to append
+      console.log("Append to row with key:", key, "values:", valuesToAppend);
+
+      if (!googleApi) {
+        console.warn("Google API not loaded yet");
+        return;
+      }
+
+      try {
+        // Read all data to find the key and determine where to append
+        const response = await googleApi.client.sheets.spreadsheets.values.get({
+          spreadsheetId: spreadsheetId,
+          range: `${tabName}!A:ZZ`, // Read all columns
+        });
+
+        const values = response.result.values || [];
+
+        // Find the row index where the key matches (0-indexed in array)
+        const rowIndex = values.findIndex((rowData) => rowData[0] === key);
+
+        if (rowIndex !== -1) {
+          // Key found - append values at the end of the row
+          const rowNumber = rowIndex + 1; // Convert to 1-indexed for Sheets API
+          const existingRow = values[rowIndex];
+          const lastColumnIndex = existingRow.length; // Next empty column
+          const startColumn = String.fromCharCode(65 + lastColumnIndex); // Convert to letter (A=65)
+
+          const appendResponse = await googleApi.client.sheets.spreadsheets.values.append({
+            spreadsheetId: spreadsheetId,
+            range: `${tabName}!${startColumn}${rowNumber}`,
+            resource: {
+              values: [valuesToAppend],
+            },
+            valueInputOption: "USER_ENTERED",
+            insertDataOption: "OVERWRITE",
+          });
+          console.log(
+            `${appendResponse.result.updates?.updatedCells} cells appended to row ${rowNumber}.`
+          );
+        } else {
+          // Key not found - create new row with key + values
+          const appendResponse = await googleApi.client.sheets.spreadsheets.values.append({
+            spreadsheetId: spreadsheetId,
+            range: `${tabName}!A1`,
+            resource: {
+              values: [row], // Include key + values
+            },
+            valueInputOption: "USER_ENTERED",
+          });
+          console.log(
+            `Key not found. ${appendResponse.result.updates?.updatedCells} cells appended as new row.`
+          );
+        }
+      } catch (error) {
+        console.error("Error appending to row:", error);
+      }
+    },
+    [spreadsheetId, tabName, googleApi]
+  );
+
   useCogsEvent(connection, "Append Row", appendRow);
+  useCogsEvent(connection, "Add to existing Row", appendToRow);
 
   return (
     <div className="App">

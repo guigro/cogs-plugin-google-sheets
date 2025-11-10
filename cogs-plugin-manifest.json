@@ -30,6 +30,12 @@
         "value": {
           "type": "string"
         }
+      },
+      {
+        "name": "Add to existing Row",
+        "value": {
+          "type": "string"
+        }
       }
     ],
     "toCogs:": []
