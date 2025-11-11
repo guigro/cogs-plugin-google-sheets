@@ -23,7 +23,7 @@
      - **Tab Name**: The tab name within the spreadsheet that you wish to add rows to. In a brand new spreadsheet this is usually "Sheet1"
 
 You can now use the `Google Sheets: Append Row` action in your behaviours.
-You can also use the `Google Sheets Plus: Append to Row` action to add values to an existing row after already entered value. The way it works, is that the first column should be a common value (like an ID key). If this value already exists in your Google Sheets, all values you enter there will be added after the last non-empty column. If the ID does not exists, it will create it.
+You can also use the `Google Sheets: Add to existing Row` action to add values to an existing row after already entered value. The way it works, is that the first column should be a common value (like an ID key). If this value already exists in your Google Sheets, all values you enter there will be added after the last non-empty column. If the ID does not exists, it will create it.
 
 ## Local development in a browser
 

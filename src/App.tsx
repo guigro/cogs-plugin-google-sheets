@@ -99,21 +99,27 @@ export default function App() {
       }
 
       try {
-        // Read all data to find the key and determine where to append
-        const response = await googleApi.client.sheets.spreadsheets.values.get({
+        // First, read only column A to find the key (more efficient)
+        const keyColumnResponse = await googleApi.client.sheets.spreadsheets.values.get({
           spreadsheetId: spreadsheetId,
-          range: `${tabName}!A:ZZ`, // Read all columns
+          range: `${tabName}!A:A`, // Read only first column
         });
 
-        const values = response.result.values || [];
+        const keyColumn = keyColumnResponse.result.values || [];
 
         // Find the row index where the key matches (0-indexed in array)
-        const rowIndex = values.findIndex((rowData) => rowData[0] === key);
+        const rowIndex = keyColumn.findIndex((rowData) => rowData[0] === key);
 
         if (rowIndex !== -1) {
-          // Key found - append values at the end of the row
+          // Key found - now fetch only that specific row to determine where to append
           const rowNumber = rowIndex + 1; // Convert to 1-indexed for Sheets API
-          const existingRow = values[rowIndex];
+
+          const rowResponse = await googleApi.client.sheets.spreadsheets.values.get({
+            spreadsheetId: spreadsheetId,
+            range: `${tabName}!${rowNumber}:${rowNumber}`, // Read only the specific row
+          });
+
+          const existingRow = rowResponse.result.values?.[0] || [];
           const lastColumnIndex = existingRow.length; // Next empty column
           const startColumn = String.fromCharCode(65 + lastColumnIndex); // Convert to letter (A=65)
 
