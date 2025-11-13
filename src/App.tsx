@@ -14,6 +14,15 @@ const GOOGLE_API_DISCOVERY_DOCS = [
   "https://sheets.googleapis.com/$discovery/rest?version=v4",
 ];
 
+function columnIndexToLetter(index: number): string {
+  let column = '';
+  while (index >= 0) {
+    column = String.fromCharCode((index % 26) + 65) + column;
+    index = Math.floor(index / 26) - 1;
+  }
+  return column;
+}
+
 export default function App() {
   const connection = useCogsConnection<{
     config: {
@@ -121,7 +130,7 @@ export default function App() {
 
           const existingRow = rowResponse.result.values?.[0] || [];
           const lastColumnIndex = existingRow.length; // Next empty column
-          const startColumn = String.fromCharCode(65 + lastColumnIndex); // Convert to letter (A=65)
+          const startColumn = columnIndexToLetter(lastColumnIndex);
 
           const appendResponse = await googleApi.client.sheets.spreadsheets.values.append({
             spreadsheetId: spreadsheetId,
