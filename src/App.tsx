@@ -14,6 +14,15 @@ const GOOGLE_API_DISCOVERY_DOCS = [
   "https://sheets.googleapis.com/$discovery/rest?version=v4",
 ];
 
+function columnIndexToLetter(index: number): string {
+  let column = '';
+  while (index >= 0) {
+    column = String.fromCharCode((index % 26) + 65) + column;
+    index = Math.floor(index / 26) - 1;
+  }
+  return column;
+}
+
 export default function App() {
   const connection = useCogsConnection<{
     config: {
@@ -23,6 +32,7 @@ export default function App() {
     };
     inputEvents: {
       "Append Row": string;
+      "Add to existing Row": string;
     };
   }>();
   const isConnected = useIsConnected(connection);
@@ -79,7 +89,84 @@ export default function App() {
     [spreadsheetId, tabName, googleApi]
   );
 
+  const appendToRow = useCallback(
+    async (rowString: string) => {
+      const row = parseRow(rowString);
+
+      if (row.length === 0) {
+        console.warn("Empty row provided");
+        return;
+      }
+
+      const key = row[0];
+      const valuesToAppend = row.slice(1); // Remove the key, keep only values to append
+      console.log("Append to row with key:", key, "values:", valuesToAppend);
+
+      if (!googleApi) {
+        console.warn("Google API not loaded yet");
+        return;
+      }
+
+      try {
+        // First, read only column A to find the key (more efficient)
+        const keyColumnResponse = await googleApi.client.sheets.spreadsheets.values.get({
+          spreadsheetId: spreadsheetId,
+          range: `${tabName}!A:A`, // Read only first column
+        });
+
+        const keyColumn = keyColumnResponse.result.values || [];
+
+        // Find the row index where the key matches (0-indexed in array)
+        const rowIndex = keyColumn.findIndex((rowData) => rowData[0] === key);
+
+        if (rowIndex !== -1) {
+          // Key found - now fetch only that specific row to determine where to append
+          const rowNumber = rowIndex + 1; // Convert to 1-indexed for Sheets API
+
+          const rowResponse = await googleApi.client.sheets.spreadsheets.values.get({
+            spreadsheetId: spreadsheetId,
+            range: `${tabName}!${rowNumber}:${rowNumber}`, // Read only the specific row
+          });
+
+          const existingRow = rowResponse.result.values?.[0] || [];
+          const lastColumnIndex = existingRow.length; // Next empty column
+          const startColumn = columnIndexToLetter(lastColumnIndex);
+
+          const appendResponse = await googleApi.client.sheets.spreadsheets.values.append({
+            spreadsheetId: spreadsheetId,
+            range: `${tabName}!${startColumn}${rowNumber}`,
+            resource: {
+              values: [valuesToAppend],
+            },
+            valueInputOption: "USER_ENTERED",
+            insertDataOption: "OVERWRITE",
+          });
+          console.log(
+            `${appendResponse.result.updates?.updatedCells} cells appended to row ${rowNumber}.`
+          );
+        } else {
+          // Key not found - create new row with key + values
+          const appendResponse = await googleApi.client.sheets.spreadsheets.values.append({
+            spreadsheetId: spreadsheetId,
+            range: `${tabName}!A1`,
+            resource: {
+              values: [row], // Include key + values
+            },
+            valueInputOption: "USER_ENTERED",
+          });
+          console.log(
+            `Key not found. ${appendResponse.result.updates?.updatedCells} cells appended as new row.`
+          );
+        }
+      } catch (error) {
+        console.error("Error appending to row:", error);
+      }
+    },
+    [spreadsheetId, tabName, googleApi]
+  );
+
   useCogsEvent(connection, "Append Row", appendRow);
+  useCogsEvent(connection, "Add to existing Row", appendToRow);
 
   return (
     <div className="App">
