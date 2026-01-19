@@ -23,6 +23,14 @@ function columnIndexToLetter(index: number): string {
   return column;
 }
 
+function letterToColumnIndex(letters: string): number {
+  let index = 0;
+  for (let i = 0; i < letters.length; i++) {
+    index = index * 26 + (letters.toUpperCase().charCodeAt(i) - 64);
+  }
+  return index - 1;
+}
+
 export default function App() {
   const connection = useCogsConnection<{
     config: {
@@ -33,6 +41,7 @@ export default function App() {
     inputEvents: {
       "Append Row": string;
       "Add to existing Row": string;
+      "Add to existing Row with column": string;
     };
   }>();
   const isConnected = useIsConnected(connection);
@@ -165,8 +174,83 @@ export default function App() {
     [spreadsheetId, tabName, googleApi]
   );
 
+  const appendToRowWithColumn = useCallback(
+    async (rowString: string) => {
+      const row = parseRow(rowString);
+
+      if (row.length < 2) {
+        console.warn("Input must contain at least ID and column (e.g., 'ID,C,value1,value2')");
+        return;
+      }
+
+      const key = row[0];
+      const startColumnLetter = row[1];
+      const valuesToWrite = row.slice(2);
+      console.log("Append to row with key:", key, "starting at column:", startColumnLetter, "values:", valuesToWrite);
+
+      if (!googleApi) {
+        console.warn("Google API not loaded yet");
+        return;
+      }
+
+      try {
+        // First, read only column A to find the key
+        const keyColumnResponse = await googleApi.client.sheets.spreadsheets.values.get({
+          spreadsheetId: spreadsheetId,
+          range: `${tabName}!A:A`,
+        });
+
+        const keyColumn = keyColumnResponse.result.values || [];
+        const rowIndex = keyColumn.findIndex((rowData) => rowData[0] === key);
+        const startColumnIndex = letterToColumnIndex(startColumnLetter);
+        const endColumnLetter = columnIndexToLetter(startColumnIndex + valuesToWrite.length - 1);
+
+        if (rowIndex !== -1) {
+          // Key found - write values at the specified column
+          const rowNumber = rowIndex + 1;
+
+          const updateResponse = await googleApi.client.sheets.spreadsheets.values.update({
+            spreadsheetId: spreadsheetId,
+            range: `${tabName}!${startColumnLetter.toUpperCase()}${rowNumber}:${endColumnLetter}${rowNumber}`,
+            resource: {
+              values: [valuesToWrite],
+            },
+            valueInputOption: "USER_ENTERED",
+          });
+          console.log(
+            `${updateResponse.result.updatedCells} cells updated in row ${rowNumber}.`
+          );
+        } else {
+          // Key not found - create new row with key in A and values at specified column
+          // Build a row with key in first position and values at the right offset
+          const newRow: string[] = [key];
+          for (let i = 1; i < startColumnIndex; i++) {
+            newRow.push('');
+          }
+          newRow.push(...valuesToWrite);
+
+          const appendResponse = await googleApi.client.sheets.spreadsheets.values.append({
+            spreadsheetId: spreadsheetId,
+            range: `${tabName}!A1`,
+            resource: {
+              values: [newRow],
+            },
+            valueInputOption: "USER_ENTERED",
+          });
+          console.log(
+            `Key not found. ${appendResponse.result.updates?.updatedCells} cells appended as new row.`
+          );
+        }
+      } catch (error) {
+        console.error("Error appending to row with column:", error);
+      }
+    },
+    [spreadsheetId, tabName, googleApi]
+  );
+
   useCogsEvent(connection, "Append Row", appendRow);
   useCogsEvent(connection, "Add to existing Row", appendToRow);
+  useCogsEvent(connection, "Add to existing Row with column", appendToRowWithColumn);
 
   return (
     <div className="App">
